@@ -60,7 +60,7 @@ func main() {
 			log.Printf("no data received [size_bytes=%d,src_addr=%s]", nRecv, addr)
 			continue
 		}
-		log.Printf("received data [size_bytes=%d,src_addr=%s]: %s", nRecv, addr, data)
+		log.Printf("received: %q (size_bytes=%d,src_addr=%s)", strings.TrimSpace(string(data)), nRecv, addr)
 
 		// send response
 		resp := fmt.Sprintf("[%s] %s", now.Format("2006-01-02 15:04:05"), data)
@@ -75,6 +75,6 @@ func main() {
 			log.Println(err)
 			os.Exit(1)
 		}
-		log.Printf("sent response [size_bytes=%d,dest_addr=%s]: %s", nRecv, addr, resp)
+		log.Printf("replied with: %q (size_bytes=%d,dest_addr=%s)", strings.TrimSpace(string(resp)), nRecv, addr)
 	}
 }
