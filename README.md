@@ -1,17 +1,21 @@
 # netns
 
-This project explores the [Linux network namespace](https://en.wikipedia.org/wiki/Linux_namespaces#Network_(net)), using tools from the [`iproute2`](https://en.wikipedia.org/wiki/Iproute2) utility. In particular, it uses commands like:
+This project explores the [Linux network namespace](https://en.wikipedia.org/wiki/Linux_namespaces#Network_(net)), using tools from the [`iproute2`](https://en.wikipedia.org/wiki/Iproute2) utility.
+
+In particular, it uses commands like:
 
 * `ip netns` to manage network namespaces
-* `ip link` to configure virtual network devices (i.e. `veth`)
-* `ip addr` to add address range to new network devices
+* `ip link` to configure virtual network interfaces (i.e. `veth`)
+* `ip addr` to add address range to new network interfaces
 * `ip route` to manipulate route entries in the kernel routing table
 
-For testing purposes, a TCP and UDP servers can be found in the `cmd` folders.
+For testing purposes, a TCP and UDP servers have been included in the `cmd` folder.
 
 The following commands have been tested on Ubuntu 16.04.6 LTS.
 
-**Note that `sudo` privileges are required**
+**Note that `sudo` privileges are required.**
+
+## Create the Virtual Network Interfaces (veth)
 
 To create a pair of [`veth`](https://man7.org/linux/man-pages/man4/veth.4.html#:~:text=The%20veth%20devices%20are%20virtual,always%20created%20in%20interconnected%20pairs.) interfaces named `veth0` and `veth1` on the localhost:
 ```sh
@@ -24,14 +28,6 @@ ip link show veth0
 ip link show veth1
 133: veth1@veth0: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000
     link/ether fe:4a:e5:5b:52:fd brd ff:ff:ff:ff:ff:ff
-```
-
-Create a new network namespace named `vnet`:
-```sh
-ip netns add vnet
-
-ip netns show vnet
-vnet
 ```
 
 Configure the `veth0` interface with IP address range 10.0.1.0/24:
@@ -47,6 +43,16 @@ ip addr show veth0
        valid_lft forever preferred_lft forever
 ```
 
+## Create a New Network Namespace
+
+Create a new network namespace named `vnet`:
+```sh
+ip netns add vnet
+
+ip netns show vnet
+vnet
+```
+
 Move the `veth1` to the `vnet` network namespace:
 ```sh
 ip link set veth1 netns vnet
@@ -58,7 +64,7 @@ ip link show veth1
 Device "veth1" does not exist.
 ```
 
-It can viewed in the `vnet` network namespace using the `ip netns exec` command:
+It can be viewed in the `vnet` network namespace using the `ip netns exec` command:
 ```sh
 ip netns exec vnet ip link show veth1
 133: veth1@if134: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000
@@ -68,9 +74,9 @@ ip netns exec vnet ip link show veth1
 There are two parts to the above command:
 
 1. `ip netns exec vnet` allows us to execute a command in the `vnet` network namespace
-1. `ip link show veth1` the command to be executed in the `vnet` network namespace
+1. `ip link show veth1` is the command to be executed
 
-(The `ip netns exec vnet <command>` command can be shortened to `ip -n vnet <command>`.)
+> 💡 Tips: The `ip netns exec vnet <command>` command can be shortened to `ip -n vnet <command>`.
 
 Configure the `veth1` interface by assigning it the IP address range 10.0.2.0/24:
 ```sh
@@ -83,7 +89,9 @@ ip netns exec vnet ip link show veth1
     link/ether fe:4a:e5:5b:52:fd brd ff:ff:ff:ff:ff:ff link-netnsid 0
 ```
 
-Notice that we deliberately assign different subnet address to the `veth` pair.
+_Notice that we deliberately assign different subnet address to the `veth` pair, so that we can explore routing later_
+
+## Test with ICMP
 
 Let's try to ping the `veth1` interface:
 ```sh
@@ -103,8 +111,9 @@ ip route get 10.0.2.1
     cache
 ```
 
-The packets are being routed to my `wlp110s0` interface, instead of the `veth0` interface. Let's examine the route table:
+The packets are being routed to my `wlp110s0` interface, instead of the `veth0` interface.
 
+Let's examine the route table:
 ```sh
 ip route
 default via 192.168.1.254 dev wlp110s0  proto static  metric 600
@@ -112,8 +121,7 @@ default via 192.168.1.254 dev wlp110s0  proto static  metric 600
 ```
 There are no route entries for the 10.0.2.0/24 range. Hence, the `default` route is used!
 
-We need to add an entry for the 10.0.2.0/24 range, so that all packets destined for IP address in that range are routed to the `veth0` interface.
-
+We need to add an entry for the 10.0.2.0/24 range, so that all packets destined for IP address in that range are routed to the `veth0` interface:
 ```sh
 ip route add 10.0.2.0/24 dev veth0 scope link
 
@@ -149,7 +157,7 @@ pipe 4
 ```
 Still no luck...
 
-Let's check out the route tables of the `vnet` network namespace:
+Let's investigate the route tables of the `vnet` network namespace:
 ```
 ip netns exec vnet ip route
 10.0.2.0/24 dev veth1  proto kernel  scope link  src 10.0.2.0
@@ -178,6 +186,7 @@ PING 10.0.2.0 (10.0.2.0) 56(84) bytes of data.
 4 packets transmitted, 4 received, 0% packet loss, time 3072ms
 rtt min/avg/max/mdev = 0.074/0.089/0.134/0.026 ms
 ```
+And it works! 🎉🎉
 
 We can use `tcpdump` to confirm that the packets are routed to the expected interfaces:
 ```sh
@@ -215,7 +224,9 @@ listening on veth1, link-type EN10MB (Ethernet), capture size 262144 bytes
 10:57:55.864453 IP 10.0.1.0 > 10.0.2.0: ICMP echo request, id 9557, seq 44, length 64
 ```
 
-Let's start our TCP server in the `vnet` namespace:
+## Test with TCP
+
+Let's test with our TCP server in the `vnet` namespace:
 ```sh
 ip netns exec vnet /usr/local/go/bin/go run ./cmd/tcp/...
 2020/06/10 11:06:11 listening at 0.0.0.0:4078 (tcp)...
@@ -234,6 +245,8 @@ ip netns exec vnet /usr/local/go/bin/go run ./cmd/tcp/...
 2020/06/10 11:06:11 listening at 0.0.0.0:4078 (tcp)...
 2020/06/10 11:06:50 received: "hello" (size_bytes=6)
 ```
+
+## Examine the Network Namespace
 
 To view the processes running in a network namespace, we can use the `ip netns pids` command:
 ```sh
