@@ -41,13 +41,13 @@ func main() {
 		if err != nil {
 			var e *net.OpError
 			if errors.As(err, &e) && e.Timeout() {
-				// if timeout, extend the deadline and try again
+				// if timeout, restart loop
 				deadline = time.Now().Add(timeoutRead)
 				continue
 			}
 
 			log.Println(err)
-			os.Exit(1)
+			continue
 		}
 
 		// trim empty spaces in block
